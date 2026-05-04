@@ -45,6 +45,11 @@ func Start(args []string) error {
 		return fmt.Errorf("setting up otto: %w", err)
 	}
 
+	// Refresh the cached latest version before autoUpdate and hintUpdateAvailable
+	// read it, so a launch on release day sees today's version. Bounded by
+	// LatestVersion's 5s timeout; offline launches keep the previous cache.
+	refreshUpdateCacheIfStale()
+
 	// Apply auto-update or fall back to the hint. Both must run before
 	// redirectCLILogs — post-redirect, writes would land in a log file the
 	// user never opens. autoUpdate downloads synchronously when the cache
@@ -72,11 +77,6 @@ func Start(args []string) error {
 	if err := EnsureAfWrapper(); err != nil {
 		logger.Warnf("otto: failed to install af wrapper: %v (will fall back to uvx)", err)
 	}
-
-	// Refresh the cached latest-version in the background so the next launch
-	// prints an up-to-date hint. Fire-and-forget; the goroutine lives for the
-	// duration of the Otto session via cmd.Wait() below.
-	go refreshUpdateCacheAsync()
 
 	env := cfg.BuildEnv()
 

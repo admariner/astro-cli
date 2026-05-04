@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	updateCheckInterval = 24 * time.Hour
+	updateCheckInterval = 1 * time.Hour
 	updateStateFile     = ".update-check"
 )
 
@@ -77,24 +77,24 @@ func autoUpdateEnabled() bool {
 	return config.CFG.OttoAutoUpdate.GetBool()
 }
 
-// refreshUpdateCacheAsync refreshes the cached latest version if the cache is
-// older than updateCheckInterval. Safe to run in a goroutine after the logger
-// is redirected — it never prints, only updates the state file.
-func refreshUpdateCacheAsync() {
+// refreshUpdateCacheIfStale refreshes the cached latest version when the
+// cache is older than updateCheckInterval. Must run before autoUpdate and
+// hintUpdateAvailable read the cache so a launch right after a release picks
+// up the new version. On network failure, LastCheck is still bumped so the
+// 5s LatestVersion timeout does not repeat on every launch when the CDN is
+// unreachable; LatestKnown is preserved so the hint still works.
+func refreshUpdateCacheIfStale() {
 	state, _ := readUpdateState()
 	if t, err := time.Parse(time.RFC3339, state.LastCheck); err == nil {
 		if time.Since(t) < updateCheckInterval {
 			return
 		}
 	}
-	latest, err := LatestVersion()
-	if err != nil {
-		return
+	state.LastCheck = time.Now().UTC().Format(time.RFC3339)
+	if latest, err := LatestVersion(); err == nil {
+		state.LatestKnown = latest
 	}
-	_ = writeUpdateState(updateState{
-		LastCheck:   time.Now().UTC().Format(time.RFC3339),
-		LatestKnown: latest,
-	})
+	_ = writeUpdateState(state)
 }
 
 func readUpdateState() (updateState, error) {
